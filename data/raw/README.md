@@ -1,7 +1,3 @@
-
-
-
-
 # A Benchmark Dataset for Code-Level Vulnerability Detection and Analysis
 # PyCode-Vul
 

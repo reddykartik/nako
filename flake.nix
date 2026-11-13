@@ -14,7 +14,7 @@
     devShells.${system}.default = pkgs.mkShell {
       packages = [ (mkPythonEnv {
         extraPackages = (ps: with ps; [
-          ipython matplotlib pyarrow
+          ipython matplotlib openpyxl
         ]);
       }) ];
     };
