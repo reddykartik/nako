@@ -1,0 +1,25 @@
+nako -- python vulnerability detection
+02f754064dce1a8c2b4b301f25c43b44fe2bbfd
+
+1. Setting up Nix(package manager)
+```bash
+# download and install nix package manager
+# https://nixos.org/download/
+sudo dnf install nix
+# enable flakes
+# edit /etc/nix/nix.conf
+experimental-features = nix-command flakes
+``
+
+2. Setting up development environment
+```bash
+git clone git@github.com:reddykartik/nako.git
+cd nako
+nix develop
+```
+
+================================================
+REFERENCES:
+  - PyVul_Code Dataset:
+    https://github.com/S-AiRLab/-PyCode_Vul-A-Benchmark-Dataset-for-Code-Level-Vulnerability-Detection-and-Analysis
+
