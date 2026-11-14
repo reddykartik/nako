@@ -6,6 +6,10 @@ import matplotlib.pyplot as plt
 %matplotlib tk
 ##
 
+## {{{ constants
+SEED = 3
+## }}}
+
 ## {{{ loading dataset
 dirname = os.path.join(os.path.abspath(".."), "data", "raw")
 train = pd.read_excel(os.path.join(dirname, "train.xlsx"))
@@ -60,39 +64,37 @@ print(test.info())
 
 ## {{{ viewing dataset samples
 print("\nTRAINING SAMPLES:")
-print(train.sample(10))
+print(train.sample(10, random_state=SEED))
 # TRAINING SAMPLES:
-#                                __source_file  cve_ids  ...                                       sha                         vulnerable_function_source
-# 12214                                    NaN  UNKNOWN  ...  9f87313d1aec2f74d006533648907397448dcdc5  def test_skip_none_tasks(self):\n        sessi...
-# 4973         functions_for_w3af_with_cwe.csv  UNKNOWN  ...  a10af2dc8666fc9dda9c2d11f11a853acbabf2a1  def quit(self, widget, event):\n        '''Win...
-# 9265                                     NaN  UNKNOWN  ...  0f1f9fa3f80b1e57490380704416bd63455e998c  def POST(self, **kwargs):\n        """\n      ...
-# 5950        functions_for_flask_with_cwe.csv  UNKNOWN  ...  a40489e0ce89acef2a49b70a571143ef479ca235  def send_file(filename_or_fp, mimetype=None, a...
-# 11355                                    NaN  UNKNOWN  ...  b434928e01faf02e222a291f6da6f38233c72e63  def render_tmpl(tmplsrc,\n                    ...
-# 3310      functions_for_ansible_with_cwe.csv  UNKNOWN  ...  56937e8972c34842957dec5f6aa8a30256ec27dd  def _set_variables(self, hostvars):\n\n       ...
-# 6692   functions_for_volatility_with_cwe.csv  UNKNOWN  ...  8284cbdf5e92437a701e0e5177b66b29ab5f0620  def modification(self, profile):\n        m = ...
-# 4210       functions_for_sqlmap_with_cwe.csv  UNKNOWN  ...  578bcb9140c50baa990066ac4e7f67c482f1c2ef  def unionTest():\n    """\n    This method tes...
-# 1066      functions_for_airflow_with_cwe.csv  UNKNOWN  ...  bd38225727abb6a0df3f4ea0e6fc68fa388f0632  def structure_data(\n    session: SessionDep,\...
-# 578      functions_for_paramiko_with_cwe.csv  UNKNOWN  ...  9e76f38045ef1e24eb2f6ff93d0b68470b237bad  def _async_request(self, fileobj, t, *arg):\n ...
+#                             __source_file  cve_ids  ...                                       sha                         vulnerable_function_source
+# 13098  functions_for_airflow_with_cwe.csv  UNKNOWN  ...  af0c83e9bf84e3a0dff782e3a95a9b610d23643d  def _reset_signals():\n    # Uninstall the ric...
+# 1945    functions_for_django_with_cwe.csv  UNKNOWN  ...  3b2993ed04f200a89c2d49590131c97c8974e9ac  def get_year(self):\n        """\n        Retu...
+# 4176   functions_for_ansible_with_cwe.csv  UNKNOWN  ...  e6190524248ef2747c70e5c04377e78eb63e4d76  def __init__(self, *args, **kwargs):\n        ...
+# 4452                                  NaN  UNKNOWN  ...  279f1fae1e8ef08eaff7a3505029fc2cc0508302  def test_async_execute_logging_should_execute_...
+# 2005    functions_for_mlflow_with_cwe.csv  UNKNOWN  ...  fc19cde859e92b6e5dcc882a2742e4648e86b4ac  def collect_metrics(self):\n        # Get GPU ...
+# 11237                                 NaN  UNKNOWN  ...  64968b7d645e8696492c6455be4692400567f1e3  def initdb():\n    from airflow import models\...
+# 9191      functions_for_salt_with_cwe.csv  UNKNOWN  ...  af2a3028d3d18437b5b9f17a96c1f3ebafb7d1db  def install(name=None,\n            refresh=Fa...
+# 4179    functions_for_mlflow_with_cwe.csv  UNKNOWN  ...  1ecbd4ac8b16716d2ba08517cec62245d5d20374  def _get_user_defined_estimator(self, X_train,...
+# 12366                                 NaN  UNKNOWN  ...  935a9b9d56d1d0ab26ba4493b64851429510d4e3  def test_line_insert_end(self, name):\n       ...
+# 4943                                  NaN  UNKNOWN  ...  b8d0dc73c762bedc0a36bb380cded62a7b3ea162  def test_view_with_bad_login(self):\n        "...
 # 
 # [10 rows x 10 columns]
-
 print("\nTESTING SAMPLES:")
-print(test.sample(10))
+print(test.sample(10, random_state=SEED))
 # TESTING SAMPLES:
 #                            __source_file  cve_ids  ...                                       sha                                      function_code
-# 3288   functions_for_mlflow_with_cwe.csv  UNKNOWN  ...  242a555f35aecc2e5f9a5ee9f929577da2820db0  def get_artifact_repo_from_storage_info(\n    ...
-# 119                                  NaN  UNKNOWN  ...  b56cb5cc97de074bb0e520f66b79e7eb2d913fb1  def process_file(self, filepath, only_if_updat...
-# 936   functions_for_ansible_with_cwe.csv  UNKNOWN  ...  3f22f79e73af4398d03b0c1676bb8efde32ea607  def get_config_value_and_origin(self, config, ...
-# 112   functions_for_airflow_with_cwe.csv  UNKNOWN  ...  cb295c351a016c0a10cab07f2a628b865cff3ca3  def _redact_all(self, item: Redactable, depth:...
-# 1832     functions_for_salt_with_cwe.csv  UNKNOWN  ...  fe277909396bf072048e42a27a8d83e1df3547ae  def tune_in(self):\n        '''\n        Lock ...
-# 3458                                 NaN  UNKNOWN  ...  adcdf30b2aaf9f5767acc5efe31db1d77417bf5f  def test_is_in_databricks_runtime():\n    with...
-# 2505   functions_for_mlflow_with_cwe.csv  UNKNOWN  ...  d46dd96d60002ef0105f3eae8f76a829945dfc3f  def test_get_store_raises_on_uc_uri(store_uri)...
-# 2343   functions_for_mlflow_with_cwe.csv  UNKNOWN  ...  9ebab719e53fb3924ea21434d4fe45b9868daf8a  def load_context(self, context):\n            ...
-# 3166                                 NaN  UNKNOWN  ...  8f96fa61a7abb8129a7dcfabf216f4ba0b362db5  def admin_password_present(name, password=None...
-# 2561   functions_for_django_with_cwe.csv  UNKNOWN  ...  d847ddfe1d4475e768c547b17642d3ed0894d54e  def __call__(self, **kwargs):\n            # W...
+# 2395   functions_for_django_with_cwe.csv  UNKNOWN  ...  25c15b17a86fa95b5374b9ef6366450b28a28b7a  def queryset_add(self, request):\n        """\...
+# 1273     functions_for_w3af_with_cwe.csv  UNKNOWN  ...  b48bb3ebb41a074f70805cba57bb518768fe7dfb  def _generate_urls(self, url):\n        '''\n ...
+# 1601                                 NaN  UNKNOWN  ...  efe163a1fddfd66fa402231906e96733efddf8af  def test_runs_respected_after_clear(self):\n  ...
+# 2651                                 NaN  UNKNOWN  ...  b9224ee28f8d1fe669ae9c09738257bcaf0efd19  def test_default_run_context_tags(patch_script...
+# 536   functions_for_airflow_with_cwe.csv  UNKNOWN  ...  cb295c351a016c0a10cab07f2a628b865cff3ca3  def execute(self, context: Context) -> Any:\n ...
+# 1671  functions_for_ansible_with_cwe.csv  UNKNOWN  ...  7e3916b767e1f02fae67630ce7e81bdf47825282  def get_capabilities(self):\n        """Return...
+# 1099   functions_for_sqlmap_with_cwe.csv  UNKNOWN  ...  84ba3d45c1c129a81f6f784b2b04d0d321423ccf  def getChar(idx, charTbl=None, continuousOrder...
+# 1737                                 NaN  UNKNOWN  ...  8eec2d93b6e93b8a1107fb3de2acd68d6994d6ec  def render(self, name, value, attrs=None):\n  ...
+# 3125                                 NaN  UNKNOWN  ...  66b02cbec463a7179ab6ac2860dd64553afb74d8  def test_add_spans():\n    trace_manager = InM...
+# 1567                                 NaN  UNKNOWN  ...  936e7c4755e503cc2a067398e39d485fc8f0984e  def test_handle_failure_no_task(self, Stats_in...
 # 
 # [10 rows x 10 columns]
-
 print("\nTRAIN UNIQUE VALUES:")
 print(train.nunique())
 # TRAIN UNIQUE VALUES:
@@ -615,6 +617,410 @@ fig.savefig(
   dpi=300, bbox_inches="tight")
 plt.show()
 # image saved at ../images/test_boxplot.png
+# train vulnerable vs patch
+train["vulnerable_length"] = train_vul_length
+train["patched_length"] = train_patch_length
+print("\nTrain Vulnerable vs Patched Length:")
+print(train[["vulnerable_length", "patched_length"]].corr())
+# Train Vulnerable vs Patched Length:
+#                    vulnerable_length  patched_length
+# vulnerable_length           1.000000        0.998436
+# patched_length              0.998436        1.000000
+# training code length visualization
+plt.scatter(train["vulnerable_length"], train["patched_length"], alpha=0.3)
+plt.xlabel("Vulnerable")
+plt.ylabel("Patched")
+plt.title("Train Code Length")
+plt.savefig(
+  os.path.join(
+    os.path.abspath(".."),
+    "images",
+    "train_vul_patch_code_length.png"),
+  dpi=300, bbox_inches="tight")
+plt.show()
+# image saved at ../images/train_vul_patch_code_length.png
+# test vulnerable vs patch
+test["vulnerable_length"] = test_vul_length
+test["patched_length"] = test_patch_length
+print("\nTest Vulnerable vs Patched Length:")
+print(test[["vulnerable_length", "patched_length"]].corr())
+# Test Vulnerable vs Patched Length:
+#                    vulnerable_length  patched_length
+# vulnerable_length           1.000000        0.999561
+# patched_length              0.999561        1.000000
+plt.scatter(test["vulnerable_length"], test["patched_length"], alpha=0.3)
+plt.xlabel("Vulnerable")
+plt.ylabel("Patched")
+plt.title("Test Code Length")
+plt.savefig(
+  os.path.join(
+    os.path.abspath(".."),
+    "images",
+    "test_vul_patch_code_length.png"),
+  dpi=300, bbox_inches="tight")
+plt.show()
+# image saved at ../images/test_vul_patch_code_length.png
+## }}}
+
+## {{{ relationship among columns
+for name, df, target in [
+  ("train", train, "label"),
+  ("test", test, "class"),
+]:
+  print(f"\n{name.upper()} DATASET:")
+  print(f"\nREPOSITORIES PER {target.upper()}:")
+  print(df.groupby("repo")[target].agg(["count", "sum", "mean"]))
+  print("\n", pd.crosstab(df["repo"], df[target], normalize="index"))
+  print(f"\nSOURCE FILE PER {target.upper()}:")
+  print(pd.crosstab(df["__source_file"], df[target], normalize="index"))
+  print("\n", pd.crosstab(df["__source_file"].isna(), df[target], normalize="index"))
+  print(f"\nFILE PATH PER {target.upper()}:")
+  print(pd.crosstab(df["file_path"], df[target], normalize="index"))
+  pattern = r"(?:^|/)(?:test[^/]*|[^/]*test[^/]*)\.py$"
+  is_test = df["file_path"].str.contains(
+    pattern,
+    case=False,
+    regex=True,
+    na=False,
+  )
+  print("\n", pd.crosstab(
+    is_test,
+    df[target],
+    normalize="index",
+    margins=True,
+  ))
+  print("\nTesting:\n", df.loc[is_test, ["file_path", target]].sample(10, random_state=SEED))
+  print("\nProduction:\n", df.loc[~is_test, ["file_path", target]].sample(10, random_state=SEED))
+  print("\n" + "=" * 60)
+# 
+# TRAIN DATASET:
+# 
+# REPOSITORIES PER LABEL:
+#                                  count   sum      mean
+# repo
+# PyCQA/bandit                       351     0  0.000000
+# andresriancho/w3af                 719     0  0.000000
+# ansible/ansible                   1307   486  0.371844
+# apache/airflow                    2659  1822  0.685220
+# django/django                     1857  1025  0.551966
+# jupyter/notebook                   431    33  0.076566
+# mlflow/mlflow                     1600   787  0.491875
+# pallets/flask                      376   106  0.281915
+# paramiko/paramiko                  303    31  0.102310
+# psf/requests                       195    54  0.276923
+# saltstack/salt                    2480  1654  0.666935
+# sqlmapproject/sqlmap              1066   225  0.211069
+# tornadoweb/tornado                 579    67  0.115717
+# volatilityfoundation/volatility    275     3  0.010909
+# yaml/pyyaml                         50     5  0.100000
+# 
+#  label                                   0         1
+# repo
+# PyCQA/bandit                     1.000000  0.000000
+# andresriancho/w3af               1.000000  0.000000
+# ansible/ansible                  0.628156  0.371844
+# apache/airflow                   0.314780  0.685220
+# django/django                    0.448034  0.551966
+# jupyter/notebook                 0.923434  0.076566
+# mlflow/mlflow                    0.508125  0.491875
+# pallets/flask                    0.718085  0.281915
+# paramiko/paramiko                0.897690  0.102310
+# psf/requests                     0.723077  0.276923
+# saltstack/salt                   0.333065  0.666935
+# sqlmapproject/sqlmap             0.788931  0.211069
+# tornadoweb/tornado               0.884283  0.115717
+# volatilityfoundation/volatility  0.989091  0.010909
+# yaml/pyyaml                      0.900000  0.100000
+# 
+# SOURCE FILE PER LABEL:
+# label                                    0
+# __source_file
+# functions_for_airflow_with_cwe.csv     1.0
+# functions_for_ansible_with_cwe.csv     1.0
+# functions_for_bandit_with_cwe.csv      1.0
+# functions_for_django_with_cwe.csv      1.0
+# functions_for_flask_with_cwe.csv       1.0
+# functions_for_jupyter_with_cwe.csv     1.0
+# functions_for_mlflow_with_cwe.csv      1.0
+# functions_for_paramiko_with_cwe.csv    1.0
+# functions_for_requests_with_cwe.csv    1.0
+# functions_for_salt_with_cwe.csv        1.0
+# functions_for_sqlmap_with_cwe.csv      1.0
+# functions_for_tornado_with_cwe.csv     1.0
+# functions_for_volatility_with_cwe.csv  1.0
+# functions_for_w3af_with_cwe.csv        1.0
+# functions_for_yaml_with_cwe.csv        1.0
+# 
+#  label            0    1
+# __source_file
+# False          1.0  0.0
+# True           0.0  1.0
+# 
+# FILE PATH PER LABEL:
+# label                                                 0    1
+# file_path
+# IPython/frontend/html/notebook/handlers.py          1.0  0.0
+# IPython/frontend/html/notebook/kernelmanager.py     1.0  0.0
+# IPython/frontend/html/notebook/nbmanager.py         1.0  0.0
+# IPython/frontend/html/notebook/notebook.py          1.0  0.0
+# IPython/frontend/html/notebook/notebook/handler...  1.0  0.0
+# ...                                                 ...  ...
+# waf/virusdie.py                                     1.0  0.0
+# waf/wallarm.py                                      1.0  0.0
+# waf/watchguard.py                                   1.0  0.0
+# waf/webknight.py                                    1.0  0.0
+# waf/zenedge.py                                      1.0  0.0
+# 
+# [5602 rows x 2 columns]
+# 
+#  label             0         1
+# file_path
+# False      0.722570  0.277430
+# True       0.279917  0.720083
+# All        0.557973  0.442027
+# 
+# Testing:
+#                                                 file_path  label
+# 1760   airflow-core/tests/unit/api_fastapi/common/db/...      1
+# 1138                         tornado/test/ioloop_test.py      0
+# 2139                     tests/model_fields/test_uuid.py      0
+# 12079         django/contrib/gis/gdal/tests/test_geom.py      0
+# 2995   w3af/core/controllers/chrome/tests/test_instru...      0
+# 2753               tests/tracking/test_model_registry.py      1
+# 8614      tests/forms_tests/tests/test_error_messages.py      1
+# 4656   tests/store/artifact/test_databricks_artifact_...      1
+# 86                                     tests/test_cli.py      1
+# 5211                       chart/tests/test_pgbouncer.py      1
+# 
+# Production:
+#                                                 file_path  label
+# 8839                                    flask/helpers.py      0
+# 12448                         volatility/win32/rawreg.py      0
+# 2725                                  bandit/cli/main.py      0
+# 7237              w3af/core/data/context/context/html.py      0
+# 9756              notebook/services/sessions/handlers.py      0
+# 2949                                django/utils/html.py      1
+# 5373                            notebook/nbextensions.py      1
+# 726                 lib/ansible/plugins/strategy/free.py      0
+# 7797   airflow/contrib/operators/gcp_bigtable_operato...      0
+# 1461              airflow/utils/log/file_task_handler.py      0
+# 
+# ============================================================
+# 
+# TEST DATASET:
+# 
+# REPOSITORIES PER CLASS:
+#                                  count  sum      mean
+# repo
+# PyCQA/bandit                        89    0  0.000000
+# andresriancho/w3af                 157    0  0.000000
+# ansible/ansible                    340  134  0.394118
+# apache/airflow                     680  486  0.714706
+# django/django                      490  281  0.573469
+# jupyter/notebook                   129    8  0.062016
+# mlflow/mlflow                      379  180  0.474934
+# pallets/flask                       99   28  0.282828
+# paramiko/paramiko                   71    7  0.098592
+# psf/requests                        51   23  0.450980
+# saltstack/salt                     600  390  0.650000
+# sqlmapproject/sqlmap               249   48  0.192771
+# tornadoweb/tornado                 126   15  0.119048
+# volatilityfoundation/volatility     89    0  0.000000
+# yaml/pyyaml                         14    1  0.071429
+# 
+#  class                                   0         1
+# repo
+# PyCQA/bandit                     1.000000  0.000000
+# andresriancho/w3af               1.000000  0.000000
+# ansible/ansible                  0.605882  0.394118
+# apache/airflow                   0.285294  0.714706
+# django/django                    0.426531  0.573469
+# jupyter/notebook                 0.937984  0.062016
+# mlflow/mlflow                    0.525066  0.474934
+# pallets/flask                    0.717172  0.282828
+# paramiko/paramiko                0.901408  0.098592
+# psf/requests                     0.549020  0.450980
+# saltstack/salt                   0.350000  0.650000
+# sqlmapproject/sqlmap             0.807229  0.192771
+# tornadoweb/tornado               0.880952  0.119048
+# volatilityfoundation/volatility  1.000000  0.000000
+# yaml/pyyaml                      0.928571  0.071429
+# 
+# SOURCE FILE PER CLASS:
+# class                                    0
+# __source_file
+# functions_for_airflow_with_cwe.csv     1.0
+# functions_for_ansible_with_cwe.csv     1.0
+# functions_for_bandit_with_cwe.csv      1.0
+# functions_for_django_with_cwe.csv      1.0
+# functions_for_flask_with_cwe.csv       1.0
+# functions_for_jupyter_with_cwe.csv     1.0
+# functions_for_mlflow_with_cwe.csv      1.0
+# functions_for_paramiko_with_cwe.csv    1.0
+# functions_for_requests_with_cwe.csv    1.0
+# functions_for_salt_with_cwe.csv        1.0
+# functions_for_sqlmap_with_cwe.csv      1.0
+# functions_for_tornado_with_cwe.csv     1.0
+# functions_for_volatility_with_cwe.csv  1.0
+# functions_for_w3af_with_cwe.csv        1.0
+# functions_for_yaml_with_cwe.csv        1.0
+# 
+#  class            0    1
+# __source_file
+# False          1.0  0.0
+# True           0.0  1.0
+# 
+# FILE PATH PER CLASS:
+# class                                              0    1
+# file_path
+# IPython/frontend/html/notebook/filenbmanager.py  1.0  0.0
+# IPython/frontend/html/notebook/handlers.py       1.0  0.0
+# IPython/html/allow76.py                          1.0  0.0
+# IPython/html/base/handlers.py                    1.0  0.0
+# IPython/html/base/zmqhandlers.py                 1.0  0.0
+# ...                                              ...  ...
+# waf/siteguard.py                                 1.0  0.0
+# waf/sonicwall.py                                 1.0  0.0
+# waf/urlmaster.py                                 1.0  0.0
+# waf/webknight.py                                 1.0  0.0
+# waf/wordfence.py                                 1.0  0.0
+# 
+# [2225 rows x 2 columns]
+# 
+#  class             0         1
+# file_path
+# False      0.714350  0.285650
+# True       0.279104  0.720896
+# All        0.550660  0.449340
+# 
+# Testing:
+#                                                file_path  class
+# 1995  tests/api_fastapi/core_api/routes/public/test_...      1
+# 1713           tests/ti_deps/deps/test_dagrun_id_dep.py      0
+# 1669               test/units/playbook/test_taggable.py      0
+# 2210  test/units/modules/network/f5/test_bigip_gtm_p...      1
+# 3391                   tests/tracking/test_log_image.py      1
+# 2314  airflow-core/tests/unit/api_fastapi/core_api/r...      1
+# 1300  tests/providers/amazon/aws/operators/test_glue.py      1
+# 1986    tests/cli/commands/test_internal_api_command.py      1
+# 3486         tests/regressiontests/admin_views/tests.py      1
+# 3546                 tests/unit/templates/jinja_test.py      1
+# 
+# Production:
+#                                         file_path  class
+# 1994             lib/ansible/playbook/helpers.py      1
+# 495   lib/ansible/executor/task_queue_manager.py      0
+# 1202                        tornado/websocket.py      0
+# 1882                     lib/ansible/cli/pull.py      1
+# 576                       salt/states/archive.py      1
+# 3130       lib/ansible/modules/system/systemd.py      0
+# 317                    flask/testsuite/appctx.py      0
+# 1627                          bandit/cli/main.py      0
+# 452      lib/ansible/modules/system/firewalld.py      0
+# 823                    plugins/generic/search.py      0
+# 
+# ============================================================
+# 
+## }}}
+
+## {{{ inspecting source code
+print("\nTRAINING DATASET:")
+same = train["vulnerable_function_source"] == train["patched_function_source"]
+print(f"same: {train.loc[same, "label"].mean().round(3)}")
+print("\n" + "=" * 60)
+print("\nTESTING DATASET:")
+same = test["function_code"] == test["patched_function_source"]
+print(f"same: {test.loc[same, "class"].mean().round(3)}")
+# TRAINING DATASET:
+# same: 0.457
+# 
+# ============================================================
+# 
+# TESTING DATASET:
+# same: 0.471
+
+## }}}
+
+## {{{ processing dataset
+h1 = train[[
+  "repo",
+  "vulnerable_function_source",
+  "patched_function_source",
+  "label"
+]]
+h1.columns = ["repo", "source_code", "patch", "is_vulnerable"]
+
+h2 = test[[
+  "repo",
+  "function_code",
+  "patched_function_source",
+  "class"
+]]
+h2.columns = ["repo", "source_code", "patch", "is_vulnerable"]
+
+df = pd.concat([h1, h2], ignore_index=True)
+df = df.sample(frac=1, random_state=SEED).reset_index(drop=True)
+print(df.sample(10, random_state=SEED))
+#                        repo                                        source_code                                              patch  is_vulnerable
+# 10831       ansible/ansible  def test_update_interval_larger_than_existing_...  def test_update_interval_larger_than_existing_...              1
+# 12610        apache/airflow  def test_cli_assets_materialize(parser: Argume...  def test_cli_assets_materialize(parser: Argume...              1
+# 14713        saltstack/salt  def _run(cmd,\n         cwd=None,\n         st...  def _run(cmd,\n         cwd=None,\n         st...              1
+# 9520         apache/airflow  def get_conn(self):\n        conn = self.get_c...  def get_conn(self):\n        conn = self.get_c...              0
+# 1201   sqlmapproject/sqlmap  def getFingerprint(self):\n        value = ""\...  def getFingerprint(self):\n        value = ""\...              0
+# 1137     tornadoweb/tornado  def _value_from_stopiteration(e):\n    try:\n ...  def _value_from_stopiteration(e):\n    try:\n ...              0
+# 16152        apache/airflow  def test_parms_not_passed_is_empty_dict(self):...  def test_parms_not_passed_is_empty_dict(self):...              1
+# 15519         django/django  def get_backend_timeout(self, timeout=DEFAULT_...  def get_backend_timeout(self, timeout=DEFAULT_...              0
+# 14600         django/django  def test_chunked(self):\n        "The static v...  def test_chunked(self):\n        "The static v...              0
+# 3779        ansible/ansible  def __init__(self):\n\n        super(CallbackM...  def __init__(self):\n\n        super(CallbackM...              0
+print(df.info())
+# <class 'pandas.DataFrame'>
+# RangeIndex: 17811 entries, 0 to 17810
+# Data columns (total 4 columns):
+#  #   Column         Non-Null Count  Dtype
+# ---  ------         --------------  -----
+#  0   repo           17811 non-null  str
+#  1   source_code    17756 non-null  str
+#  2   patch          17692 non-null  str
+#  3   is_vulnerable  17811 non-null  int64
+# dtypes: int64(1), str(3)
+# memory usage: 556.7 KB
+# None
+#
+# ast parsable check
+import ast
+
+def can_parse(source):
+  try:
+    ast.parse(source)
+    return True
+  except (SyntaxError, NameError, ValueError, TypeError):
+    return False
+
+source_code = df["source_code"].apply(can_parse)
+patched_code = df["patch"].apply(can_parse)
+print(f"Parsable source code: {source_code.sum()}")
+print(f"Parsable patched code: {patched_code.sum()}")
+# Parsable source code: 17756
+# Parsable patched code: 17692
+df = df[(source_code & patched_code)]
+print(df.info())
+# <class 'pandas.DataFrame'>
+# Index: 17692 entries, 0 to 17809
+# Data columns (total 4 columns):
+#  #   Column         Non-Null Count  Dtype
+# ---  ------         --------------  -----
+#  0   repo           17692 non-null  str
+#  1   source_code    17692 non-null  str
+#  2   patch          17692 non-null  str
+#  3   is_vulnerable  17692 non-null  int64
+# dtypes: int64(1), str(3)
+# memory usage: 691.1 KB
+# None
+#
+# saving dataset
+filename = os.path.join(os.path.abspath(".."), "data", "processed", "dataset.csv")
+df.to_csv(filename, index=False)
+print(f"dataset saved at {filename}")
 ## }}}
 
 

@@ -21,20 +21,20 @@ Progress
 3. Explore distributions
 [x] Use describe for numerical columns
 [x] Use value_counts for categorical columns
-[ ] Inspect text lengths and date ranges where relevant
-[ ] Visualise useful distributions
+[x] Inspect text lengths and date ranges where relevant
+[x] Visualise useful distributions
 
 
 4. Investigate relationships
-[ ] Ask meaningful questions between columns
-[ ] Use groupby, crosstab and pivot_table
-[ ] Explore correlations and conditional proportions
+[x] Ask meaningful questions between columns
+[x] Use groupby, crosstab and pivot_table
+[x] Explore correlations and conditional proportions
 
 
 5. Audit data quality
-[ ] Check missing values and duplicates
-[ ] Investigate invalid values and outliers
-[ ] Verify labels, provenance and possible leakage
+[x] Check missing values and duplicates
+[x] Investigate invalid values and outliers
+[x] Verify labels, provenance and possible leakage
 
 
 6. Decide what to do
