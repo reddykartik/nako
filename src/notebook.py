@@ -1,4 +1,4 @@
-## 
+## {{{ processing raw dataset
 import os
 import pandas as pd
 import matplotlib.pyplot as plt
@@ -1023,4 +1023,947 @@ df.to_csv(filename, index=False)
 print(f"dataset saved at {filename}")
 ## }}}
 
+## }}}
 
+## {{{ new day, new beginning with processed dataset
+import os
+import pandas as pd
+from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.model_selection import GroupShuffleSplit
+from sklearn.dummy import DummyClassifier
+from sklearn.metrics import (
+  accuracy_score,
+  roc_auc_score,
+  precision_score,
+  recall_score,
+  f1_score,
+  balanced_accuracy_score,
+  classification_report,
+  confusion_matrix,
+)
+from sklearn.linear_model import LogisticRegression
+from sklearn.svm import LinearSVC
+##
+
+## constanst
+SEED = 3
+THRESHOLD = 0.5
+##
+
+## {{{ loading dataset
+filename = os.path.join(os.path.abspath(".."), "data", "processed", "dataset.csv")
+df = pd.read_csv(filename)
+print(df.info())
+print(df.sample(10, random_state=SEED))
+# <class 'pandas.DataFrame'>
+# RangeIndex: 17692 entries, 0 to 17691
+# Data columns (total 4 columns):
+#  #   Column         Non-Null Count  Dtype
+# ---  ------         --------------  -----
+#  0   repo           17692 non-null  str
+#  1   source_code    17692 non-null  str
+#  2   patch          17692 non-null  str
+#  3   is_vulnerable  17692 non-null  int64
+# dtypes: int64(1), str(3)
+# memory usage: 553.0 KB
+# None
+#                        repo                                        source_code                                              patch  is_vulnerable
+# 7198         apache/airflow  def test_gen_pod_extract_xcom(self, mock_rand_...  def test_gen_pod_extract_xcom(self, mock_rand_...              1
+# 13839       ansible/ansible  def __init__(self):\n        self.supports_che...  def __init__(self):\n        self.supports_che...              0
+# 16345  sqlmapproject/sqlmap  def getColumns(self, onlyColNames=False, colTu...  def getColumns(self, onlyColNames=False, colTu...              0
+# 12166        saltstack/salt  def present(\n    name,\n    skip_translate=No...  def present(\n    name,\n    skip_translate=No...              1
+# 2314          mlflow/mlflow  def test_crud_prompts(tracking_uri):\n    clie...  def test_crud_prompts(tracking_uri):\n    clie...              1
+# 5806         saltstack/salt  def _thread_return(self, data):\n        '''\n...  def _thread_return(self, data):\n        '''\n...              1
+# 6256         saltstack/salt  def test_configparser():\n    data = {"foo": {...  def test_configparser():\n    data = {"foo": {...              1
+# 1999         apache/airflow  def test_next_run_assets(test_client, dag_make...  def test_next_run_assets(test_client, dag_make...              1
+# 13691         django/django  def _has_changed(self, initial, data):\n      ...  def _has_changed(self, initial, data):\n      ...              0
+# 5491        ansible/ansible  def load_config(module, command_filter, commit...  def load_config(module, command_filter, commit...              0
+## }}}
+
+## {{{ splitting
+splitter = GroupShuffleSplit(
+  n_splits=1,
+  test_size=0.15,
+  random_state=SEED,
+)
+
+train_val_idx, test_idx = next(splitter.split(
+  df["source_code"],
+  df["is_vulnerable"],
+  groups=df["patch"],
+))
+
+train_val = df.iloc[train_val_idx].reset_index(drop=True)
+test = df.iloc[test_idx].reset_index(drop=True)
+
+splitter = GroupShuffleSplit(
+  n_splits=1,
+  test_size=0.17647,
+  random_state=SEED,
+)
+
+train_idx, val_idx = next(splitter.split(
+  train_val["source_code"],
+  train_val["is_vulnerable"],
+  groups=train_val["patch"],
+))
+
+train = train_val.iloc[train_idx].reset_index(drop=True)
+val = train_val.iloc[val_idx].reset_index(drop=True)
+
+train_groups = set(train["patch"])
+val_groups = set(val["patch"])
+test_groups = set(test["patch"])
+assert(train_groups.isdisjoint(val_groups))
+assert(val_groups.isdisjoint(test_groups))
+assert(test_groups.isdisjoint(train_groups))
+for name, df in [
+  ("Train", train),
+  ("Val", val),
+  ("Test", test),
+]:
+  print(name.upper())
+  print(df["is_vulnerable"].value_counts(normalize=True))
+# 
+# TRAIN
+# is_vulnerable
+# 0    0.558786
+# 1    0.441214
+# Name: proportion, dtype: float64
+# VAL
+# is_vulnerable
+# 0    0.561417
+# 1    0.438583
+# Name: proportion, dtype: float64
+# TEST
+# is_vulnerable
+# 0    0.550113
+# 1    0.449887
+# Name: proportion, dtype: float64
+# 
+## }}}
+#
+## {{{ encoding source code
+vectorizer = TfidfVectorizer(
+  token_pattern=r"(?u)\b\w+\b",
+  analyzer="word",
+  # unigram -- individual tokens
+  # bigram -- pairs of consecutive tokens
+  ngram_range=(1, 2),
+)
+
+X_train = vectorizer.fit_transform(train["source_code"])
+y_train = train["is_vulnerable"].values
+X_val = vectorizer.transform(val["source_code"])
+y_val = val["is_vulnerable"].values
+# inspecting vectorizer
+row = pd.DataFrame({
+  "tokens": vectorizer.get_feature_names_out(),
+  "idf": vectorizer.idf_,
+})
+
+print("IDF ASCENDING=FALSE")
+print(row.sort_values("idf", ascending=False).head(20))
+# IDF ASCENDING=FALSE
+#                       tokens       idf
+# 653351  šđćžćžšđ šđabcćžćžšđ  9.731094
+# 653350      šđćžćžšđ choices  9.731094
+# 653349              šđćžćžšđ  9.731094
+# 653348      šđabcćžćžšđ ćžšđ  9.731094
+# 653347           šđabcćžćžšđ  9.731094
+# 653346          ćžšđ abcćžšđ  9.731094
+# 653345                  ćžšđ  9.731094
+# 653344               üniçø é  9.731094
+# 31                  0 0x1000  9.731094
+# 28                     0 0na  9.731094
+# 27                      0 09  9.731094
+# 25                      0 07  9.731094
+# 21                      0 03  9.731094
+# 16                     0 008  9.731094
+# 653343                 üniçø  9.731094
+# 653342         é assert_copy  9.731094
+# 653341                     é  9.731094
+# 653340                   ç d  9.731094
+# 653339                     ç  9.731094
+# 653338            æøå skaper  9.731094
+print(train["source_code"].iloc[0])
+# def test_model_save_persists_specified_conda_env_in_mlflow_model_directory(
+#         model, model_path, keras_custom_env):
+#     mlflow.keras.save_model(keras_model=model, path=model_path, conda_env=keras_custom_env)
+# 
+#     pyfunc_conf = _get_flavor_configuration(model_path=model_path, flavor_name=pyfunc.FLAVOR_NAME)
+#     saved_conda_env_path = os.path.join(model_path, pyfunc_conf[pyfunc.ENV])
+#     assert os.path.exists(saved_conda_env_path)
+#     assert saved_conda_env_path != keras_custom_env
+# 
+#     with open(keras_custom_env, "r") as f:
+#         keras_custom_env_parsed = yaml.safe_load(f)
+#     with open(saved_conda_env_path, "r") as f:
+#         saved_conda_env_parsed = yaml.safe_load(f)
+#     assert saved_conda_env_parsed == keras_custom_env_parsed
+suspicious = "šđćžćžšđ"
+mask = train["source_code"].str.contains(
+  suspicious,
+  regex=False
+)
+print(train.loc[mask, ["repo", "source_code", "is_vulnerable"]])
+# Empty DataFrame
+# Columns: [repo, source_code, is_vulnerable]
+# Index: []
+# 
+# confusing🤔 na??? where does this token came from in vectorizer?
+print("\nUnique tokens:")
+print(row["tokens"].value_counts())
+print("\nVocabulary size:", len(vectorizer.vocabulary_))
+print("\nTraining matrix shape: ", X_train.shape)
+print("\nNonzero values: ", X_train.nnz)
+print("\nSparasity: ", 1 - X_train.nnz / (X_train.shape[0] * X_train.shape[1]))
+# Unique tokens:
+# tokens
+# 0                        1
+# 0 0                      1
+# 0 00                     1
+# 0 0000                   1
+# 0 000000                 1
+#                         ..
+# метка_оператора_2 tag    1
+# 以下为主机名解析                 1
+# 以下为主机名解析 ccc             1
+# 本机                       1
+# 本机 fopen_mock            1
+# Name: count, Length: 653377, dtype: int64
+# 
+# Vocabulary size: 653377
+# 
+# Training matrix shape:  (12384, 653377)
+# 
+# Nonzero values:  3189762
+# 
+# Sparasity:  0.9996057846833754
+tokens = vectorizer.get_feature_names_out()
+suspicious_tokens = [
+  token for token in tokens
+  if any(ord(char) > 127 for char in token)
+]
+for token in suspicious_tokens[:20]:
+  print(repr(token))
+# '200 déplacé'
+# 'a sťāçkeð'
+# 'a tãbűlař'
+# 'a α'
+# 'abcćžšđ'
+# 'abcćžšđ ul'
+# 'amp β'
+# 'andré'
+# 'andré bessette'
+# 'anton α'
+# 'anöther'
+# 'anöther sťāçkeð'
+# 'assert räksmörgås'
+# 'assertserializedequal föobár'
+# 'awεšome'
+# 'awεšome pubdate'
+# 'awεšome slug1'
+# 'awεšomeıııi'
+# 'awεšomeıııi pubdate'
+# 'awεšomeıııi self'
+token = suspicious_tokens[0]
+print(repr(token))
+print([hex(ord(char)) for char in token])
+# '200 déplacé'
+# ['0x32', '0x30', '0x30', '0x20', '0x64', '0xe9', '0x70', '0x6c', '0x61', '0x63', '0xe9']
+analyzer = vectorizer.build_analyzer()
+for i, source in enumerate(train["source_code"]):
+  found = [t for t in analyzer(source) if t in suspicious_tokens]
+  if found:
+    print("ROW: ", i)
+    print("TOKENS: ", [repr(t) for t in found])
+    print(source[:1000])
+    break
+# ROW:  381
+# TOKENS:  ["'nàmë'", "'awεšomeıııi'", "'sťāçkeð'", "'anöther'", "'sťāçkeð'", "'tãbűlař'", "'tãbűlař'", "'nàmë'", "'awεšomeıııi'", "'nàmë'", "'awεšomeıııi'", "'sťāçkeð'", "'anöther'", "'sťāçkeð'", "'tãbűlař'", "'tãbűlař'", "'main nàmë'", "'nàmë and'", "'s awεšomeıııi'", "'awεšomeıııi slug1'", "'a sťāçkeð'", "'sťāçkeð inline'", "'have anöther'", "'anöther sťāçkeð'", "'sťāçkeð inline'", "'a tãbűlař'", "'tãbűlař inline'", "'a tãbűlař'", "'tãbűlař inline'", "'main nàmë'", "'nàmë and'", "'s awεšomeıııi'", "'awεšomeıııi pubdate'", "'main nàmë'", "'nàmë and'", "'its awεšomeıııi'", "'awεšomeıııi self'", "'a sťāçkeð'", "'sťāçkeð inline'", "'have anöther'", "'anöther sťāçkeð'", "'sťāçkeð inline'", "'a tãbűlař'", "'tãbűlař inline'", "'a tãbűlař'", "'tãbűlař inline'"]
+# def test_prepopulated_fields(self):
+#         """
+#         The JavaScript-automated prepopulated fields work with the main form
+#         and with stacked and tabular inlines.
+#         Refs #13068, #9264, #9983, #9784.
+#         """
+#         self.admin_login(username='super', password='secret', login_url=reverse('admin:index'))
+#         self.selenium.get(self.live_server_url + reverse('admin:admin_views_mainprepopulated_add'))
+#         self.wait_for('.select2')
+# 
+#         # Main form ----------------------------------------------------------
+#         self.selenium.find_element_by_id('id_pubdate').send_keys('2012-02-18')
+#         self.select_option('#id_status', 'option two')
+#         self.selenium.find_element_by_id('id_name').send_keys(' this is the mAin nÀMë and it\'s awεšomeıııİ')
+#         slug1 = self.selenium.find_element_by_id('id_slug1').get_attribute('value')
+#         slug2 = self.selenium.find_element_by_id('id_slug2').get_attribute('value')
+#         slug3 = self.selenium.find_element_by_id('id_
+#
+# good, but we haven't found the suspicious token we were looking for
+# yet...
+target = "šđćžćžšđ"
+print("In Vocabulary: ", target in vectorizer.vocabulary_)
+for i, source in enumerate(train["source_code"]):
+  if target in analyzer(source):
+    print("Found in row: ", i)
+    print("Repository name: ", train.iloc[i]["repo"])
+    print(source)
+    break
+# {{{ output -- too big
+# In Vocabulary:  True
+# Found in row:  2634
+# Repository name:  django/django
+# def test_checkboxselectmultiple(self):
+#         w = CheckboxSelectMultiple()
+#         self.assertHTMLEqual(w.render('beatles', ['J'], choices=(('J', 'John'), ('P', 'Paul'), ('G', 'George'), ('R', 'Ringo'))), """<ul>
+# <li><label><input checked="checked" type="checkbox" name="beatles" value="J" /> John</label></li>
+# <li><label><input type="checkbox" name="beatles" value="P" /> Paul</label></li>
+# <li><label><input type="checkbox" name="beatles" value="G" /> George</label></li>
+# <li><label><input type="checkbox" name="beatles" value="R" /> Ringo</label></li>
+# </ul>""")
+#         self.assertHTMLEqual(w.render('beatles', ['J', 'P'], choices=(('J', 'John'), ('P', 'Paul'), ('G', 'George'), ('R', 'Ringo'))), """<ul>
+# <li><label><input checked="checked" type="checkbox" name="beatles" value="J" /> John</label></li>
+# <li><label><input checked="checked" type="checkbox" name="beatles" value="P" /> Paul</label></li>
+# <li><label><input type="checkbox" name="beatles" value="G" /> George</label></li>
+# <li><label><input type="checkbox" name="beatles" value="R" /> Ringo</label></li>
+# </ul>""")
+#         self.assertHTMLEqual(w.render('beatles', ['J', 'P', 'R'], choices=(('J', 'John'), ('P', 'Paul'), ('G', 'George'), ('R', 'Ringo'))), """<ul>
+# <li><label><input checked="checked" type="checkbox" name="beatles" value="J" /> John</label></li>
+# <li><label><input checked="checked" type="checkbox" name="beatles" value="P" /> Paul</label></li>
+# <li><label><input type="checkbox" name="beatles" value="G" /> George</label></li>
+# <li><label><input checked="checked" type="checkbox" name="beatles" value="R" /> Ringo</label></li>
+# </ul>""")
+# 
+#         # If the value is None, none of the options are selected:
+#         self.assertHTMLEqual(w.render('beatles', None, choices=(('J', 'John'), ('P', 'Paul'), ('G', 'George'), ('R', 'Ringo'))), """<ul>
+# <li><label><input type="checkbox" name="beatles" value="J" /> John</label></li>
+# <li><label><input type="checkbox" name="beatles" value="P" /> Paul</label></li>
+# <li><label><input type="checkbox" name="beatles" value="G" /> George</label></li>
+# <li><label><input type="checkbox" name="beatles" value="R" /> Ringo</label></li>
+# </ul>""")
+# 
+#         # If the value corresponds to a label (but not to an option value), none of the options are selected:
+#         self.assertHTMLEqual(w.render('beatles', ['John'], choices=(('J', 'John'), ('P', 'Paul'), ('G', 'George'), ('R', 'Ringo'))), """<ul>
+# <li><label><input type="checkbox" name="beatles" value="J" /> John</label></li>
+# <li><label><input type="checkbox" name="beatles" value="P" /> Paul</label></li>
+# <li><label><input type="checkbox" name="beatles" value="G" /> George</label></li>
+# <li><label><input type="checkbox" name="beatles" value="R" /> Ringo</label></li>
+# </ul>""")
+# 
+#         # If multiple values are given, but some of them are not valid, the valid ones are selected:
+#         self.assertHTMLEqual(w.render('beatles', ['J', 'G', 'foo'], choices=(('J', 'John'), ('P', 'Paul'), ('G', 'George'), ('R', 'Ringo'))), """<ul>
+# <li><label><input checked="checked" type="checkbox" name="beatles" value="J" /> John</label></li>
+# <li><label><input type="checkbox" name="beatles" value="P" /> Paul</label></li>
+# <li><label><input checked="checked" type="checkbox" name="beatles" value="G" /> George</label></li>
+# <li><label><input type="checkbox" name="beatles" value="R" /> Ringo</label></li>
+# </ul>""")
+# 
+#         # The value is compared to its str():
+#         self.assertHTMLEqual(w.render('nums', [2], choices=[('1', '1'), ('2', '2'), ('3', '3')]), """<ul>
+# <li><label><input type="checkbox" name="nums" value="1" /> 1</label></li>
+# <li><label><input checked="checked" type="checkbox" name="nums" value="2" /> 2</label></li>
+# <li><label><input type="checkbox" name="nums" value="3" /> 3</label></li>
+# </ul>""")
+#         self.assertHTMLEqual(w.render('nums', ['2'], choices=[(1, 1), (2, 2), (3, 3)]), """<ul>
+# <li><label><input type="checkbox" name="nums" value="1" /> 1</label></li>
+# <li><label><input checked="checked" type="checkbox" name="nums" value="2" /> 2</label></li>
+# <li><label><input type="checkbox" name="nums" value="3" /> 3</label></li>
+# </ul>""")
+#         self.assertHTMLEqual(w.render('nums', [2], choices=[(1, 1), (2, 2), (3, 3)]), """<ul>
+# <li><label><input type="checkbox" name="nums" value="1" /> 1</label></li>
+# <li><label><input checked="checked" type="checkbox" name="nums" value="2" /> 2</label></li>
+# <li><label><input type="checkbox" name="nums" value="3" /> 3</label></li>
+# </ul>""")
+# 
+#         # The 'choices' argument can be any iterable:
+#         def get_choices():
+#             for i in range(5):
+#                 yield (i, i)
+#         self.assertHTMLEqual(w.render('nums', [2], choices=get_choices()), """<ul>
+# <li><label><input type="checkbox" name="nums" value="0" /> 0</label></li>
+# <li><label><input type="checkbox" name="nums" value="1" /> 1</label></li>
+# <li><label><input checked="checked" type="checkbox" name="nums" value="2" /> 2</label></li>
+# <li><label><input type="checkbox" name="nums" value="3" /> 3</label></li>
+# <li><label><input type="checkbox" name="nums" value="4" /> 4</label></li>
+# </ul>""")
+# 
+#         # You can also pass 'choices' to the constructor:
+#         w = CheckboxSelectMultiple(choices=[(1, 1), (2, 2), (3, 3)])
+#         self.assertHTMLEqual(w.render('nums', [2]), """<ul>
+# <li><label><input type="checkbox" name="nums" value="1" /> 1</label></li>
+# <li><label><input checked="checked" type="checkbox" name="nums" value="2" /> 2</label></li>
+# <li><label><input type="checkbox" name="nums" value="3" /> 3</label></li>
+# </ul>""")
+# 
+#         # If 'choices' is passed to both the constructor and render(), then they'll both be in the output:
+#         self.assertHTMLEqual(w.render('nums', [2], choices=[(4, 4), (5, 5)]), """<ul>
+# <li><label><input type="checkbox" name="nums" value="1" /> 1</label></li>
+# <li><label><input checked="checked" type="checkbox" name="nums" value="2" /> 2</label></li>
+# <li><label><input type="checkbox" name="nums" value="3" /> 3</label></li>
+# <li><label><input type="checkbox" name="nums" value="4" /> 4</label></li>
+# <li><label><input type="checkbox" name="nums" value="5" /> 5</label></li>
+# </ul>""")
+# 
+#         # Choices are escaped correctly
+#         self.assertHTMLEqual(w.render('escape', None, choices=(('bad', 'you & me'), ('good', mark_safe('you &gt; me')))), """<ul>
+# <li><label><input type="checkbox" name="escape" value="1" /> 1</label></li>
+# <li><label><input type="checkbox" name="escape" value="2" /> 2</label></li>
+# <li><label><input type="checkbox" name="escape" value="3" /> 3</label></li>
+# <li><label><input type="checkbox" name="escape" value="bad" /> you &amp; me</label></li>
+# <li><label><input type="checkbox" name="escape" value="good" /> you &gt; me</label></li>
+# </ul>""")
+# 
+#         # Unicode choices are correctly rendered as HTML
+#         self.assertHTMLEqual(w.render('nums', ['ŠĐĆŽćžšđ'], choices=[('ŠĐĆŽćžšđ', 'ŠĐabcĆŽćžšđ'), ('ćžšđ', 'abcćžšđ')]), '<ul>\n<li><label><input type="checkbox" name="nums" value="1" /> 1</label></li>\n<li><label><input type="checkbox" name="nums" value="2" /> 2</label></li>\n<li><label><input type="checkbox" name="nums" value="3" /> 3</label></li>\n<li><label><input checked="checked" type="checkbox" name="nums" value="\u0160\u0110\u0106\u017d\u0107\u017e\u0161\u0111" /> \u0160\u0110abc\u0106\u017d\u0107\u017e\u0161\u0111</label></li>\n<li><label><input type="checkbox" name="nums" value="\u0107\u017e\u0161\u0111" /> abc\u0107\u017e\u0161\u0111</label></li>\n</ul>')
+# 
+#         # Each input gets a separate ID
+#         self.assertHTMLEqual(CheckboxSelectMultiple().render('letters', list('ac'), choices=zip(list('abc'), list('ABC')), attrs={'id': 'abc'}), """<ul id="abc">
+# <li><label for="abc_0"><input checked="checked" type="checkbox" name="letters" value="a" id="abc_0" /> A</label></li>
+# <li><label for="abc_1"><input type="checkbox" name="letters" value="b" id="abc_1" /> B</label></li>
+# <li><label for="abc_2"><input checked="checked" type="checkbox" name="letters" value="c" id="abc_2" /> C</label></li>
+# </ul>""")
+# 
+#         # Each input gets a separate ID when the ID is passed to the constructor
+#         self.assertHTMLEqual(CheckboxSelectMultiple(attrs={'id': 'abc'}).render('letters', list('ac'), choices=zip(list('abc'), list('ABC'))), """<ul id="abc">
+# <li><label for="abc_0"><input checked="checked" type="checkbox" name="letters" value="a" id="abc_0" /> A</label></li>
+# <li><label for="abc_1"><input type="checkbox" name="letters" value="b" id="abc_1" /> B</label></li>
+# <li><label for="abc_2"><input checked="checked" type="checkbox" name="letters" value="c" id="abc_2" /> C</label></li>
+# </ul>""")
+# 
+#         w = CheckboxSelectMultiple()
+#         r = w.get_renderer('abc', 'b', choices=[(c, c.upper()) for c in 'abc'])
+#         # You can iterate over the CheckboxFieldRenderer to get individual elements
+#         expected = [
+#             '<label><input type="checkbox" name="abc" value="a" /> A</label>',
+#             '<label><input checked="checked" type="checkbox" name="abc" value="b" /> B</label>',
+#             '<label><input type="checkbox" name="abc" value="c" /> C</label>',
+#         ]
+#         for output, expected in zip(r, expected):
+#             self.assertHTMLEqual(force_text(output), expected)
+# 
+#         # You can access individual elements
+#         self.assertHTMLEqual(force_text(r[1]),
+#             '<label><input checked="checked" type="checkbox" name="abc" value="b" /> B</label>')
+# 
+#         # Out-of-range errors are propagated
+#         with self.assertRaises(IndexError):
+#             r[42]
+## }}}
+#
+print("IDF ASCENDING=TRUE")
+print(row.sort_values("idf", ascending=True).head(20))
+# IDF ASCENDING=TRUE
+#         tokens       idf
+# 155070     def  1.000000
+# 276009      if  1.484791
+# 504798    self  1.508809
+# 286165      in  1.519611
+# 582745     the  1.576450
+# 231981     for  1.646532
+# 479521  return  1.687270
+# 388823     not  1.699384
+# 593799      to  1.736293
+# 304997      is  1.741195
+# 384296    none  1.775143
+# 38854        a  1.793541
+# 0            0  1.811556
+# 56001      and  1.830828
+# 642963    with  1.887049
+# 4176         1  1.894132
+# 602021    true  1.939158
+# 188319    else  2.002238
+# 216841   false  2.084979
+# 69316       as  2.094342
+row = pd.DataFrame({
+  "tokens": vectorizer.get_feature_names_out()[
+    X_train[0].indices
+  ],
+  "tfidf": X_train[0].data,
+})
+print("TFIDF ASCENDING=FALSE")
+print(row[row["tfidf"] > 0].sort_values("tfidf", ascending=False).head(20))
+# TFIDF ASCENDING=FALSE
+#                                    tokens     tfidf
+# 4                        keras_custom_env  0.395932
+# 15                   saved_conda_env_path  0.334735
+# 3                              model_path  0.300193
+# 26                keras_custom_env_parsed  0.197966
+# 29                 saved_conda_env_parsed  0.175616
+# 11                            pyfunc_conf  0.155662
+# 74                            safe_load f  0.149184
+# 28                              safe_load  0.126528
+# 73                         yaml safe_load  0.126528
+# 13                            flavor_name  0.125637
+# 25                                      f  0.120798
+# 69                                   r as  0.107706
+# 14                                 pyfunc  0.107113
+# 34                keras_custom_env mlflow  0.098983
+# 64  saved_conda_env_path keras_custom_env  0.098983
+# 67                  open keras_custom_env  0.098983
+# 65                  keras_custom_env with  0.098983
+# 68                     keras_custom_env r  0.098983
+# 43           keras_custom_env pyfunc_conf  0.098983
+# 72           keras_custom_env_parsed yaml  0.098983
+print("TFIDF ASCENDING=TRUE")
+print(row[row["tfidf"] > 0].sort_values("tfidf", ascending=True).head(20))
+# TFIDF ASCENDING=TRUE
+#              tokens     tfidf
+# 0               def  0.010172
+# 17             join  0.027698
+# 20           exists  0.036184
+# 53        path join  0.036751
+# 21             with  0.038389
+# 5            mlflow  0.038428
+# 24               as  0.042607
+# 60      path exists  0.044473
+# 18              env  0.046713
+# 16               os  0.056444
+# 7        save_model  0.057507
+# 23                r  0.061487
+# 52          os path  0.063937
+# 10        conda_env  0.064218
+# 59        assert os  0.066040
+# 40  path model_path  0.068015
+# 39       model path  0.068260
+# 19           assert  0.070406
+# 6             keras  0.071104
+# 2             model  0.071579
+## }}}
+
+## {{{ baseline model
+dummy = DummyClassifier(strategy="most_frequent", random_state=SEED)
+dummy.fit(X_train, y_train)
+y_dummy = dummy.predict(X_val)
+print(f"Accuracy: {accuracy_score(y_val, y_dummy)}")
+print(f"Balanced Accuracy: {balanced_accuracy_score(y_val, y_dummy)}")
+
+print(f"classification report:\n{classification_report(y_val, y_dummy, zero_division=0)}")
+print(f"confusion matrix:\n{confusion_matrix(y_val, y_dummy)}")
+# Accuracy: 0.5614167294649586
+# Balanced Accuracy: 0.5
+# classification report:
+#               precision    recall  f1-score   support
+# 
+#            0       0.56      1.00      0.72      1490
+#            1       0.00      0.00      0.00      1164
+# 
+#     accuracy                           0.56      2654
+#    macro avg       0.28      0.50      0.36      2654
+# weighted avg       0.32      0.56      0.40      2654
+# 
+# confusion matrix:
+# [[1490    0]
+#  [1164    0]]
+model = LogisticRegression(
+  # works better in comparision to other solver
+  # when previously compared it
+  solver="lbfgs",
+  C=1.0,
+  max_iter=1000,
+)
+model.fit(X_train, y_train)
+y_pred = model.predict(X_val)
+y_prob = model.predict_proba(X_val)[:, 1]
+print(f"Accuracy: {accuracy_score(y_val, y_pred)}")
+print(f"Balanced accuracy: {balanced_accuracy_score(y_val, y_pred)}")
+print(f"ROC_AUC Score: {roc_auc_score(y_val, y_prob)}")
+print(f"Classification report:\n{classification_report(y_val, y_pred, zero_division=0)}")
+print(f"Confusion Matrix:\n{confusion_matrix(y_val, y_pred)}")
+# Accuracy: 0.9125847776940467
+# Balanced accuracy: 0.9092720081182684
+# ROC_AUC Score: 0.9684137088032474
+# Classification report:
+#               precision    recall  f1-score   support
+# 
+#            0       0.91      0.94      0.92      1490
+#            1       0.92      0.88      0.90      1164
+# 
+#     accuracy                           0.91      2654
+#    macro avg       0.91      0.91      0.91      2654
+# weighted avg       0.91      0.91      0.91      2654
+# 
+# Confusion Matrix:
+# [[1395   95]
+#  [ 137 1027]]
+# 
+models = {
+  "Dummy": y_dummy,
+  "Logistic Regression": y_pred,
+}
+for name, predictions in models.items():
+  print(f"\n{name}:")
+  print("Accuracy: ", accuracy_score(y_val, predictions))
+  print("Balanced Accuracy: ", balanced_accuracy_score(y_val, predictions))
+  print("F1: ", f1_score(y_val, predictions, zero_division=0))
+  print("Precision: ", precision_score(y_val, predictions, zero_division=0))
+  print("Recall: ", recall_score(y_val, predictions, zero_division=0))
+  print("\n" + "=" * 60)
+# 
+# Dummy:
+# Accuracy:  0.5614167294649586
+# Balanced Accuracy:  0.5
+# F1:  0.0
+# Precision:  0.0
+# Recall:  0.0
+# 
+# ============================================================
+# 
+# Logistic Regression:
+# Accuracy:  0.9125847776940467
+# Balanced Accuracy:  0.9092720081182684
+# F1:  0.8985126859142607
+# Precision:  0.9153297682709447
+# Recall:  0.8823024054982818
+# 
+# ============================================================
+# 
+# 😁😁😁 But wait, something is very fishy because other datasets we
+# worked with hardly gave us like 30-60% accuracy, so it might be that
+# our dataset is biased or something or might contains clues that our
+# model can predict without actually learning anything about
+# vulnerability like we seen django repo it might learn loopholes in it.
+#
+# more investigating
+train_repos = set(train["repo"])
+val_repos = set(val["repo"])
+test_repos = set(test["repo"])
+print("Train repositories: ", len(train_repos))
+print("Val repositories: ", len(val_repos))
+print("Test repositories: ", len(test_repos))
+print("Train n Validation: ", len(train_repos & val_repos))
+print("Validation n Test: ", len(val_repos & test_repos))
+print("Test n Train: ", len(test_repos & train_repos))
+# Train repositories:  15
+# Val repositories:  15
+# Test repositories:  15
+# Train n Validation:  15
+# Validation n Test:  15
+# Test n Train:  15
+#
+# see there's an overlap it might be the reason why we have > 90% accuracy
+train_sources = set(train["source_code"])
+val_sources = set(val["source_code"])
+test_sources = set(test["source_code"])
+print("Train n Validation:", len(train_sources & val_sources))
+print("Validation n Test:", len(val_sources & test_sources))
+print("Test n Train:", len(test_sources & train_sources))
+# Train n Validation: 0
+# Validation n Test: 0
+# Test n Train: 0
+# 
+## }}}
+
+## {{{ split by repo
+## {{{ splitting
+filename = os.path.join(os.path.abspath(".."), "data", "processed", "dataset.csv")
+df = pd.read_csv(filename)
+splitter = GroupShuffleSplit(
+  n_splits=1,
+  test_size=0.15,
+  random_state=SEED,
+)
+
+train_val_idx, test_idx = next(splitter.split(
+  df["source_code"],
+  df["is_vulnerable"],
+  groups=df["repo"],
+))
+
+train_val = df.iloc[train_val_idx].reset_index(drop=True)
+test = df.iloc[test_idx].reset_index(drop=True)
+
+splitter = GroupShuffleSplit(
+  n_splits=1,
+  test_size=0.17647,
+  random_state=SEED,
+)
+
+train_idx, val_idx = next(splitter.split(
+  train_val["source_code"],
+  train_val["is_vulnerable"],
+  groups=train_val["repo"],
+))
+
+train = train_val.iloc[train_idx].reset_index(drop=True)
+val = train_val.iloc[val_idx].reset_index(drop=True)
+
+train_repos = set(train["repo"])
+val_repos = set(val["repo"])
+test_repos = set(test["repo"])
+print("Repositories Overlap:")
+print("Train n Validation: ", len(train_repos & val_repos))
+print("Validation n Test: ", len(val_repos & test_repos))
+print("Test n Train: ", len(test_repos & train_repos))
+# Repositories Overlap:
+# Train n Validation:  0
+# Validation n Test:  0
+# Test n Train:  0
+train_sources = set(train["source_code"])
+val_sources = set(val["source_code"])
+test_sources = set(test["source_code"])
+print("Source Code Overlap:")
+print("Train n Validation: ", len(train_sources & val_sources))
+print("Validation n Test: ", len(val_sources & test_sources))
+print("Test n Train: ", len(test_sources & train_sources))
+# Source Code Overlap:
+# Train n Validation:  0
+# Validation n Test:  0
+# Test n Train:  0
+train_patch = set(train["patch"])
+val_patch = set(val["patch"])
+test_patch = set(test["patch"])
+print("Patch Code Overlap:")
+print("Train n Validation: ", len(train_patch & val_patch))
+print("Validation n Test: ", len(val_patch & test_patch))
+print("Test n Train: ", len(test_patch & train_patch))
+# Patch Code Overlap:
+# Train n Validation:  0
+# Validation n Test:  0
+# Test n Train:  2
+print("Class distribution:")
+print("Train:\n", train["is_vulnerable"].value_counts(normalize=True))
+print("Validation:\n", val["is_vulnerable"].value_counts(normalize=True))
+print("Test:\n", test["is_vulnerable"].value_counts(normalize=True))
+# Class distribution:
+# Train:
+#  is_vulnerable
+# 0    0.511733
+# 1    0.488267
+# Name: proportion, dtype: float64
+# Validation:
+#  is_vulnerable
+# 0    0.580464
+# 1    0.419536
+# Name: proportion, dtype: float64
+# Test:
+#  is_vulnerable
+# 0    0.649575
+# 1    0.350425
+# Name: proportion, dtype: float64
+print("Size:")
+print("Train: ", train.shape)
+print("Validation: ", val.shape)
+print("Test: ", test.shape)
+# Size:
+# Train:  (9716, 4)
+# Validation:  (4095, 4)
+# Test:  (3881, 4)
+## }}}
+## {{{ vectorizer
+vectorizer = TfidfVectorizer(
+  token_pattern=r"(?u)\b\w+\b",
+  analyzer="word",
+  ngram_range=(1, 2),
+)
+
+X_train = vectorizer.fit_transform(train["source_code"])
+y_train = train["is_vulnerable"].values
+X_val = vectorizer.transform(val["source_code"])
+y_val = val["is_vulnerable"].values
+## }}}
+## {{{ model
+dummy = DummyClassifier(strategy="most_frequent", random_state=SEED)
+dummy.fit(X_train, y_train)
+y_dummy = dummy.predict(X_val)
+print(f"Accuracy: {accuracy_score(y_val, y_dummy)}")
+print(f"Balanced Accuracy: {balanced_accuracy_score(y_val, y_dummy)}")
+
+print(f"classification report:\n{classification_report(y_val, y_dummy, zero_division=0)}")
+print(f"confusion matrix:\n{confusion_matrix(y_val, y_dummy)}")
+# Accuracy: 0.5804639804639805
+# Balanced Accuracy: 0.5
+# classification report:
+#               precision    recall  f1-score   support
+# 
+#            0       0.58      1.00      0.73      2377
+#            1       0.00      0.00      0.00      1718
+# 
+#     accuracy                           0.58      4095
+#    macro avg       0.29      0.50      0.37      4095
+# weighted avg       0.34      0.58      0.43      4095
+# 
+# confusion matrix:
+# [[2377    0]
+#  [1718    0]]
+# 
+model = LogisticRegression(
+  solver="lbfgs",
+  C=1.0,
+  max_iter=1000,
+)
+model.fit(X_train, y_train)
+y_pred = model.predict(X_val)
+y_prob = model.predict_proba(X_val)[:, 1]
+print(f"Accuracy: {accuracy_score(y_val, y_pred)}")
+print(f"Balanced accuracy: {balanced_accuracy_score(y_val, y_pred)}")
+print(f"ROC_AUC Score: {roc_auc_score(y_val, y_prob)}")
+print(f"Classification report:\n{classification_report(y_val, y_pred, zero_division=0)}")
+print(f"Confusion Matrix:\n{confusion_matrix(y_val, y_pred)}")
+# Accuracy: 0.8273504273504273
+# Balanced accuracy: 0.8098907457625293
+# ROC_AUC Score: 0.8638739609264767
+# Classification report:
+#               precision    recall  f1-score   support
+# 
+#            0       0.81      0.92      0.86      2377
+#            1       0.86      0.70      0.77      1718
+# 
+#     accuracy                           0.83      4095
+#    macro avg       0.84      0.81      0.82      4095
+# weighted avg       0.83      0.83      0.82      4095
+# 
+# Confusion Matrix:
+# [[2183  194]
+#  [ 513 1205]]
+# 
+models = {
+  "Dummy": y_dummy,
+  "Logistic Regression": y_pred,
+}
+for name, predictions in models.items():
+  print(f"\n{name}:")
+  print("Accuracy: ", accuracy_score(y_val, predictions))
+  print("Balanced Accuracy: ", balanced_accuracy_score(y_val, predictions))
+  print("F1: ", f1_score(y_val, predictions, zero_division=0))
+  print("Precision: ", precision_score(y_val, predictions, zero_division=0))
+  print("Recall: ", recall_score(y_val, predictions, zero_division=0))
+  print("\n" + "=" * 60)
+# 
+# Dummy:
+# Accuracy:  0.5804639804639805
+# Balanced Accuracy:  0.5
+# F1:  0.0
+# Precision:  0.0
+# Recall:  0.0
+# 
+# ============================================================
+# 
+# Logistic Regression:
+# Accuracy:  0.8273504273504273
+# Balanced Accuracy:  0.8098907457625293
+# F1:  0.7731793391081168
+# Precision:  0.8613295210864903
+# Recall:  0.7013969732246799
+# 
+# ============================================================
+# 
+## }}}
+## {{{ inspecting overlap patch in train & test
+overlapping_patches = train_patch & test_patch
+for patch in overlapping_patches:
+  print("\nPATCH:")
+  print(patch[:500])
+  print("\nTRAIN:")
+  print(train.loc[
+    train["patch"] == patch,
+    ["repo", "is_vulnerable", "source_code"]
+  ])
+  print("\nTEST:")
+  print(test.loc[
+    test["patch"] == patch,
+    ["repo", "is_vulnerable", "source_code"]
+  ])
+  print("\n" + "=" * 60)
+# PATCH:
+# def __unionTestByCharBruteforce(comment):
+#     """
+#     This method tests if the target url is affected by an inband
+#     SQL injection vulnerability. The test is done up to 50 columns
+#     on the target database table
+#     """
+# 
+#     query = agent.prefixQuery("UNION ALL SELECT %s" % conf.uChar)
+# 
+#     for count in range(conf.uColsStart, conf.uColsStop+1):
+#         if kb.dbms == DBMS.ORACLE and query.endswith(" FROM DUAL"):
+#             query = query[:-len(" FROM DUAL")]
+# 
+#         if count:
+#             quer
+# 
+# TRAIN:
+#                       repo  is_vulnerable                                        source_code
+# 7459  sqlmapproject/sqlmap              0  def __unionTestByCharBruteforce(comment):\n   ...
+# 
+# TEST:
+#                     repo  is_vulnerable                                        source_code
+# 3287  andresriancho/w3af              0  def __unionTestByCharBruteforce(comment):\n   ...
+# 
+# ============================================================
+# 
+# PATCH:
+# def checkDependencies():
+#     missing_libraries = set()
+# 
+#     for dbmsName, data in DBMS_DICT.items():
+#         if data[1] is None:
+#             continue
+# 
+#         try:
+#             if dbmsName in (DBMS.MSSQL, DBMS.SYBASE):
+#                 import _mssql
+#                 import pymssql
+# 
+#                 if not hasattr(pymssql, "__version__") or pymssql.__version__ < "1.0.2":
+#                     warnMsg = "'%s' third-party library must be " % data[1]
+#                     warnMsg += "version >= 1.0.2 to wor
+# 
+# TRAIN:
+#                       repo  is_vulnerable                                        source_code
+# 4467  sqlmapproject/sqlmap              0  def checkDependencies():\n    missing_librarie...
+# 
+# TEST:
+#                     repo  is_vulnerable                                        source_code
+# 2236  andresriancho/w3af              0  def checkDependencies():\n    missing_librarie...
+# 
+# ============================================================
+# 
+## }}}
+## {{{ finding code duplication
+patch_repo_counts = df.groupby("patch")["repo"].nunique()
+cross_repo_patches = patch_repo_counts[
+  patch_repo_counts > 1
+]
+print("Patches appearing in multiple repos: ", len(cross_repo_patches))
+print("Total rows belonging to these patches: ", 
+  df["patch"].isin(cross_repo_patches.index).sum())
+print("Number of affected repositories: ", 
+  df[df["patch"].isin(cross_repo_patches.index)]["repo"].nunique())
+# Patches appearing in multiple repos:  2
+# Total rows belonging to these patches:  4
+# Number of affected repositories:  2
+# 
+## }}}
+
+## {{{ Linear SVM
+svm = LinearSVC(
+  max_iter=2000,
+  C=1.0,
+  random_state=SEED,
+)
+svm.fit(X_train, y_train)
+y_svm = svm.predict(X_val)
+y_svm_score =  svm.decision_function(X_val)
+print("Accuracy: ", accuracy_score(y_val, y_svm))
+print("Balanced Accuracy: ", balanced_accuracy_score(y_val, y_svm))
+print("ROC-AUC: ", roc_auc_score(y_val, y_svm_score))
+print(classification_report(y_val, y_svm, zero_division=0))
+print(confusion_matrix(y_val, y_svm))
+# Accuracy:  0.8454212454212454
+# Balanced Accuracy:  0.8305398603124726
+# ROC-AUC:  0.8970209756577759
+#               precision    recall  f1-score   support
+# 
+#            0       0.83      0.92      0.87      2377
+#            1       0.87      0.74      0.80      1718
+# 
+#     accuracy                           0.85      4095
+#    macro avg       0.85      0.83      0.84      4095
+# weighted avg       0.85      0.85      0.84      4095
+# 
+# [[2194  183]
+#  [ 450 1268]]
+## }}}
+## }}}
+## }}}
