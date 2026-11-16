@@ -1,0 +1,25 @@
+services:
+  backend:
+    image: localhost/nako-backend:latest
+    container_name: nako-backend
+    expose:
+      - "8000"
+    networks:
+      - nako-network
+
+  frontend:
+    image: localhost/nako-frontend:latest
+    container_name: nako-frontend
+    ports:
+      - "8080:80"
+    depends_on:
+      - backend
+    networks:
+      - nako-network
+    tmpfs:
+      - /tmp
+      - /var/log/nginx
+
+networks:
+  nako-network:
+    driver: bridge
