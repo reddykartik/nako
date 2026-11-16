@@ -1029,7 +1029,7 @@ print(f"dataset saved at {filename}")
 import os
 import pandas as pd
 from sklearn.feature_extraction.text import TfidfVectorizer
-from sklearn.model_selection import GroupShuffleSplit
+from sklearn.model_selection import GroupShuffleSplit, GridSearchCV, GroupKFold
 from sklearn.dummy import DummyClassifier
 from sklearn.metrics import (
   accuracy_score,
@@ -1043,11 +1043,11 @@ from sklearn.metrics import (
 )
 from sklearn.linear_model import LogisticRegression
 from sklearn.svm import LinearSVC
+from sklearn.pipeline import Pipeline
 ##
 
 ## constanst
 SEED = 3
-THRESHOLD = 0.5
 ##
 
 ## {{{ loading dataset
@@ -1965,5 +1965,523 @@ print(confusion_matrix(y_val, y_svm))
 # [[2194  183]
 #  [ 450 1268]]
 ## }}}
+## }}}
+
+## {{{ fine tuning linear SVM
+pipeline = Pipeline([
+  ("tfidf", TfidfVectorizer(
+    token_pattern=r"(?u)\b\w+\b",
+    analyzer="word",
+    ngram_range=(1, 2),
+  )),
+  ("svm", LinearSVC(
+    random_state=SEED,
+    max_iter=2000,
+  )),
+])
+
+param_grid = {
+  'svm__C': [0.1, 1.0, 7.0, 10.0],
+}
+
+cv = GroupKFold(n_splits=3)
+
+search = GridSearchCV(
+  pipeline,
+  param_grid,
+  scoring="f1",
+  cv=cv,
+  n_jobs=-1,
+  verbose=1,
+)
+
+search.fit(
+  train["source_code"],
+  train["is_vulnerable"],
+  groups=train["repo"],
+)
+
+print(search.best_params_)
+print(search.best_score_)
+# Fitting 3 folds for each of 4 candidates, totalling 12 fits
+# {'svm__C': 10.0}
+# 0.6416392790875138
+## }}}
+
+## {{{ inspecting our tuned model
+print(pd.DataFrame(search.cv_results_)[
+  ["param_svm__C", "mean_test_score", "std_test_score"]
+])
+#    param_svm__C  mean_test_score  std_test_score
+# 0           0.1         0.555520        0.249337
+# 1           1.0         0.619352        0.245490
+# 2           7.0         0.637560        0.238710
+# 3          10.0         0.641639        0.237101
+best_model = search.best_estimator_
+y_pred = best_model.predict(val["source_code"])
+y_score = best_model.decision_function(val["source_code"])
+print(f"\nAccuracy: {accuracy_score(y_val, y_pred)}")
+print(f"Balanced accuracy: {balanced_accuracy_score(y_val, y_pred)}")
+print(f"ROC_AUC Score: {roc_auc_score(y_val, y_score)}")
+print(f"\nClassification report:\n{classification_report(y_val, y_pred, zero_division=0)}")
+print(f"Confusion Matrix:\n{confusion_matrix(y_val, y_pred)}")
+# Accuracy: 0.8488400488400488
+# Balanced accuracy: 0.8363894775455312
+# ROC_AUC Score: 0.9080372487012958
+# 
+# Classification report:
+#               precision    recall  f1-score   support
+# 
+#            0       0.84      0.91      0.88      2377
+#            1       0.86      0.76      0.81      1718
+# 
+#     accuracy                           0.85      4095
+#    macro avg       0.85      0.84      0.84      4095
+# weighted avg       0.85      0.85      0.85      4095
+# 
+# Confusion Matrix:
+# [[2172  205]
+#  [ 414 1304]]
+# 
+## }}}
+## }}}
+
+## {{{ ast encoding
+##
+import ast
+from collections import Counter
+import matplotlib.pyplot as plt
+import seaborn as sns
+from sklearn.preprocessing import StandardScaler
+import numpy as np
+
+%matplotlib tk
+##
+
+## {{{ feature extraction
+def extract_ast_features(source):
+  tree = ast.parse(source)
+  counts = Counter(
+    type(node).__name__
+    for node in ast.walk(tree)
+  )
+  return {
+    "num_functions": counts["FunctionDef"] + counts["AsyncFunctionDef"],
+    "num_calls": counts["Call"],
+    "num_if": counts["If"],
+    "num_loops": counts["For"] + counts["AsyncFor"] + counts["While"],
+    "num_try": counts["Try"] + counts["TryStar"],
+    "num_imports": counts["Import"] + counts["ImportFrom"],
+    "num_returns": counts["Return"],
+    "num_assignments": counts["Assign"] + counts["AnnAssign"] + counts["AugAssign"],
+    "num_nodes": sum(counts.values()),
+  }
+
+ast_train = pd.DataFrame(
+  train["source_code"].apply(extract_ast_features).tolist()
+)
+print(ast_train.sample(5, random_state=SEED))
+print(ast_train.describe())
+#       num_functions  num_calls  num_if  num_loops  num_try  num_imports  num_returns  num_assignments  num_nodes
+# 4762              1         24       0          0        0            0            0               13        290
+# 5900              2          7       0          0        0            0            1                5        113
+# 800               1        190     119         12       25            0           44              183       3705
+# 9310              1          9       0          0        0            0            0                2        116
+# 146               1         84      22          5        0            0            1               79       1280
+#        num_functions    num_calls       num_if    num_loops      num_try  num_imports  num_returns  num_assignments    num_nodes
+# count    9716.000000  9716.000000  9716.000000  9716.000000  9716.000000  9716.000000  9716.000000      9716.000000  9716.000000
+# mean        1.140902    21.485694     6.378757     0.980445     0.575340     0.115068     1.269350        13.708522   352.095204
+# std         0.964960    40.604459    17.000930     2.192822     1.643085     0.715921     2.898632        29.547625   696.188063
+# min         1.000000     0.000000     0.000000     0.000000     0.000000     0.000000     0.000000         0.000000     5.000000
+# 25%         1.000000     4.000000     0.000000     0.000000     0.000000     0.000000     0.000000         2.000000    75.000000
+# 50%         1.000000     9.000000     1.000000     0.000000     0.000000     0.000000     0.000000         5.000000   147.000000
+# 75%         1.000000    21.000000     5.000000     1.000000     0.000000     0.000000     1.000000        12.000000   314.000000
+# max        45.000000   401.000000   155.000000    20.000000    25.000000    29.000000    45.000000       270.000000  6604.000000
+# 
+print(ast_train.corr().round(2))
+#                  num_functions  num_calls  num_if  num_loops  num_try  num_imports  num_returns  num_assignments  num_nodes
+# num_functions             1.00       0.21    0.19       0.17     0.11         0.10         0.34             0.20       0.23
+# num_calls                 0.21       1.00    0.87       0.77     0.62         0.17         0.51             0.87       0.97
+# num_if                    0.19       0.87    1.00       0.74     0.65         0.10         0.63             0.94       0.93
+# num_loops                 0.17       0.77    0.74       1.00     0.48         0.07         0.39             0.74       0.79
+# num_try                   0.11       0.62    0.65       0.48     1.00         0.18         0.46             0.59       0.61
+# num_imports               0.10       0.17    0.10       0.07     0.18         1.00         0.06             0.09       0.12
+# num_returns               0.34       0.51    0.63       0.39     0.46         0.06         1.00             0.59       0.55
+# num_assignments           0.20       0.87    0.94       0.74     0.59         0.09         0.59             1.00       0.94
+# num_nodes                 0.23       0.97    0.93       0.79     0.61         0.12         0.55             0.94       1.00
+print(ast_train.nunique().sort_values())
+# num_functions        14
+# num_imports          15
+# num_try              19
+# num_loops            21
+# num_returns          34
+# num_if              130
+# num_assignments     196
+# num_calls           261
+# num_nodes          1417
+# dtype: int64
+plt.figure(figsize=(11, 8))
+sns.heatmap(
+  ast_train.corr(),
+  annot=True,
+  fmt=".2f",
+  cmap="coolwarm",
+  center=0,
+  square=True,
+)
+plt.title("Ast Feature Correlation")
+plt.tight_layout()
+image = os.path.join(os.path.abspath(".."), "images", "ast_train_corr.png")
+plt.savefig(image, dpi=300, bbox_inches="tight")
+plt.show()
+# saved at ../images/ast_train_corr.png
+## }}}
+
+## {{{ ast_train analysis
+ast_analysis = ast_train.copy()
+ast_analysis["target"] = train["is_vulnerable"].to_numpy()
+print(ast_analysis.groupby("target").mean().T.round(2))
+# target                0       1
+# num_functions      1.09    1.19
+# num_calls         19.50   23.56
+# num_if             6.51    6.24
+# num_loops          1.03    0.93
+# num_try            0.50    0.65
+# num_imports        0.13    0.10
+# num_returns        1.46    1.07
+# num_assignments   13.64   13.78
+# num_nodes        324.37  381.15
+features = ast_train.columns
+fig, axes = plt.subplots(3, 3, figsize=(14, 12))
+for feature, ax in zip(features, axes.flat):
+  sns.boxplot(
+    data=ast_analysis,
+    x="target",
+    y=feature,
+    ax=ax,
+  )
+  ax.set_title(feature)
+plt.tight_layout()
+plt.savefig(
+  os.path.join(os.path.abspath(".."), "images", "ast_boxplot.png"),
+  dpi=300, bbox_inches="tight"
+)
+plt.show()
+# saved at ../images/ast_boxplot.png
+## }}}
+
+## {{{ baseline model + tuned model
+scaler = StandardScaler()
+X_train = pd.DataFrame(train["source_code"].apply(extract_ast_features).to_dict()).T.apply(np.log1p)
+X_val = pd.DataFrame(val["source_code"].apply(extract_ast_features).to_dict()).T.apply(np.log1p)
+X_train_scaled = scaler.fit_transform(X_train)
+X_val_scaled = scaler.transform(X_val)
+y_train = train["is_vulnerable"].values
+y_val = val["is_vulnerable"].values
+dummy = DummyClassifier(strategy="most_frequent", random_state=SEED)
+dummy.fit(X_train_scaled, y_train)
+y_pred = dummy.predict(X_val_scaled)
+print(f"\nAccuracy: {accuracy_score(y_val, y_pred)}")
+print(f"Balanced accuracy: {balanced_accuracy_score(y_val, y_pred)}")
+print(f"\nClassification report:\n{classification_report(y_val, y_pred, zero_division=0)}")
+print(f"Confusion Matrix:\n{confusion_matrix(y_val, y_pred)}")
+svm = LinearSVC(
+  C=10.0,
+  max_iter=2000,
+  random_state=SEED,
+)
+svm.fit(X_train_scaled, y_train)
+y_svm = svm.predict(X_val_scaled)
+y_svm_score = svm.decision_function(X_val_scaled)
+print(f"\nAccuracy: {accuracy_score(y_val, y_svm)}")
+print(f"Balanced accuracy: {balanced_accuracy_score(y_val, y_svm)}")
+print(f"ROC_AUC Score: {roc_auc_score(y_val, y_svm_score)}")
+print(f"\nClassification report:\n{classification_report(y_val, y_svm, zero_division=0)}")
+print(f"Confusion Matrix:\n{confusion_matrix(y_val, y_svm)}")
+# 
+# Accuracy: 0.5804639804639805
+# Balanced accuracy: 0.5
+# 
+# Classification report:
+#               precision    recall  f1-score   support
+# 
+#            0       0.58      1.00      0.73      2377
+#            1       0.00      0.00      0.00      1718
+# 
+#     accuracy                           0.58      4095
+#    macro avg       0.29      0.50      0.37      4095
+# weighted avg       0.34      0.58      0.43      4095
+# 
+# Confusion Matrix:
+# [[2377    0]
+#  [1718    0]]
+# 
+# Accuracy: 0.7255189255189255
+# Balanced accuracy: 0.7258867356598916
+# ROC_AUC Score: 0.778626956137176
+# 
+# Classification report:
+#               precision    recall  f1-score   support
+# 
+#            0       0.79      0.72      0.75      2377
+#            1       0.66      0.73      0.69      1718
+# 
+#     accuracy                           0.73      4095
+#    macro avg       0.72      0.73      0.72      4095
+# weighted avg       0.73      0.73      0.73      4095
+# 
+# Confusion Matrix:
+# [[1720  657]
+#  [ 467 1251]]
+# 
+## }}}
+
+## {{{ Combine TF-IDF and scaked AST
+from scipy.sparse import hstack, csr_matrix
+
+# TF-IDF features
+X_train_tfidf = best_model.named_steps["tfidf"].transform(
+    train["source_code"])
+X_val_tfidf = best_model.named_steps["tfidf"].transform(
+    val["source_code"])
+X_train_combined = hstack([
+  X_train_tfidf,
+  csr_matrix(X_train_scaled),
+])
+X_val_combined = hstack([
+  X_val_tfidf,
+  csr_matrix(X_val_scaled),
+])
+
+# Train Linear SVM
+combined_svm = LinearSVC(
+  C=10.0,
+  random_state=SEED,
+  max_iter=2000,
+)
+combined_svm.fit(X_train_combined, y_train)
+y_combined = combined_svm.predict(X_val_combined)
+y_combined_score = combined_svm.decision_function(X_val_combined)
+print(f"\nAccuracy: {accuracy_score(y_val, y_combined)}")
+print(f"Balanced accuracy: {balanced_accuracy_score(y_val, y_combined)}")
+print(f"ROC_AUC Score: {roc_auc_score(y_val, y_combined_score)}")
+print(f"\nClassification report:\n{classification_report(y_val, y_combined, zero_division=0)}")
+print(f"Confusion Matrix:\n{confusion_matrix(y_val, y_combined)}")
+# Accuracy: 0.8383394383394384
+# Balanced accuracy: 0.830007130812702
+# ROC_AUC Score: 0.9145666439584238
+# 
+# Classification report:
+#               precision    recall  f1-score   support
+# 
+#            0       0.85      0.88      0.86      2377
+#            1       0.83      0.78      0.80      1718
+# 
+#     accuracy                           0.84      4095
+#    macro avg       0.84      0.83      0.83      4095
+# weighted avg       0.84      0.84      0.84      4095
+# 
+# Confusion Matrix:
+# [[2096  281]
+#  [ 381 1337]]
+## }}}
+
+## {{{ raw extracted AST tokens encoded by TF-IDF 
+##
+import ast
+
+source = '''
+def calculate(x):
+  if x > 0:
+    return process(x)
+  return 0
+'''
+
+class ASTTokenExtractor(ast.NodeVisitor):
+  def __init__(self):
+    self.tokens = []
+
+  def generic_visit(self, node):
+    self.tokens.append(type(node).__name__)
+    super().generic_visit(node)
+
+def extract_features(source):
+  tree = ast.parse(source)
+  extractor = ASTTokenExtractor()
+  extractor.visit(tree)
+  return " ".join(extractor.tokens)
+
+features = extract_features(source)
+print(features)
+# Module FunctionDef arguments arg If Compare Name Load Gt Constant Return Call Name Load Name Load Return Constant
+## 
+
+## 
+train_X = train["source_code"].apply(extract_features)
+val_X = val["source_code"].apply(extract_features)
+print(train_X.iloc[0])
+# Module FunctionDef arguments arg arg Assign Name Store Constant Assign Name Store Call Name Load keyword Constant keyword Attribute Name Load Load keyword JoinedStr Constant FormattedValue Name Load Constant FormattedValue Attribute Name Load Load keyword Constant keyword Attribute Name Load Load Assert Compare Name Load IsNot Constant Expr Call Attribute Name Load Load Constant Assign Name Store Call Name Load keyword Constant Assign Name Store Call Attribute Name Load Load Constant Expr Call Attribute Name Load Load keyword Attribute Name Load Load Assert Call Attribute Name Load Load Attribute Name Load Load Assign Name Store Call Name Load keyword Name Load keyword Name Load keyword Name Load keyword Name Load keyword Name Load keyword Name Load keyword Constant keyword Attribute Name Load Load Assert Compare Name Load IsNot Constant Expr Call Attribute Name Load Load Constant Assign Name Store Call Attribute Name Load Load keyword Attribute Name Load Load keyword Attribute Name Load Load Assert Compare Call Name Load Subscript Name Load Constant Load Eq Constant Assert Compare Subscript Subscript Subscript Name Load Constant Load Constant Load Constant Load Eq Attribute Name Load Load Expr Call Attribute Name Load Load keyword Attribute Name Load Load keyword Attribute Name Load Load Expr Call Attribute Name Load Load keyword Attribute Name Load Load Assert UnaryOp Not Call Attribute Name Load Load Attribute Name Load Load
+
+vectorizer = TfidfVectorizer(
+  ngram_range=(1, 3),
+)
+
+train_X = vectorizer.fit_transform(train_X)
+val_X = vectorizer.transform(val_X)
+svm = LinearSVC(
+  C=10.0,
+  random_state=SEED,
+  max_iter=2000,
+)
+
+svm.fit(train_X, y_train)
+y_pred = svm.predict(val_X)
+y_score = svm.decision_function(val_X)
+print(f"\nAccuracy: {accuracy_score(y_val, y_pred)}")
+print(f"Balanced accuracy: {balanced_accuracy_score(y_val, y_pred)}")
+print(f"ROC_AUC Score: {roc_auc_score(y_val, y_score)}")
+print(f"\nClassification report:\n{classification_report(y_val, y_pred, zero_division=0)}")
+print(f"Confusion Matrix:\n{confusion_matrix(y_val, y_pred)}")
+# Accuracy: 0.8588522588522588
+# Balanced accuracy: 0.8498550084409036
+# ROC_AUC Score: 0.9229354313725393
+# 
+# Classification report:
+#               precision    recall  f1-score   support
+# 
+#            0       0.86      0.91      0.88      2377
+#            1       0.86      0.79      0.83      1718
+# 
+#     accuracy                           0.86      4095
+#    macro avg       0.86      0.85      0.85      4095
+# weighted avg       0.86      0.86      0.86      4095
+# 
+# Confusion Matrix:
+# [[2153  224]
+#  [ 354 1364]]
+# 
+##
+## }}}
+
+## Combine TF-IDF AST tokens with TF-IDF source-code tokens
+from scipy.sparse import hstack, csr_matrix
+
+X_train_combined = hstack([
+  X_train_tfidf,
+  train_X,
+])
+
+X_val_combined = hstack([
+  X_val_tfidf,
+  val_X,
+])
+
+svc = LinearSVC(
+  C=10.0,
+  max_iter=2000,
+  random_state=SEED,
+)
+
+svc.fit(X_train_combined, y_train)
+y_combined = svc.predict(X_val_combined)
+y_combined_score = svc.decision_function(X_val_combined)
+print(f"\nAccuracy: {accuracy_score(y_val, y_combined)}")
+print(f"Balanced accuracy: {balanced_accuracy_score(y_val, y_combined)}")
+print(f"ROC_AUC Score: {roc_auc_score(y_val, y_combined_score)}")
+print(f"\nClassification report:\n{classification_report(y_val, y_combined, zero_division=0)}")
+print(f"Confusion Matrix:\n{confusion_matrix(y_val, y_combined)}")
+# Accuracy: 0.8783882783882784
+# Balanced accuracy: 0.8674091249914906
+# ROC_AUC Score: 0.9451475945995848
+# 
+# Classification report:
+#               precision    recall  f1-score   support
+# 
+#            0       0.87      0.94      0.90      2377
+#            1       0.90      0.80      0.85      1718
+# 
+#     accuracy                           0.88      4095
+#    macro avg       0.88      0.87      0.87      4095
+# weighted avg       0.88      0.88      0.88      4095
+# 
+# Confusion Matrix:
+# [[2224  153]
+#  [ 345 1373]]
+# 
+
+## {{{ final training and testing
+X_train_val_tfidf = best_model.named_steps["tfidf"].transform(train_val["source_code"])
+X_test_tfidf = best_model.named_steps["tfidf"].transform(test["source_code"])
+X_train_val_tokens = vectorizer.transform(train_val["source_code"].apply(extract_features))
+X_test_tokens = vectorizer.transform(test["source_code"].apply(extract_features))
+X_train_val_combined = hstack([
+  X_train_val_tfidf,
+  X_train_val_tokens,
+])
+y_train_val = train_val["is_vulnerable"].values
+X_test_combined = hstack([
+  X_test_tfidf,
+  X_test_tokens,
+])
+y_test = test["is_vulnerable"].values
+svc = LinearSVC(
+  C=10.0,
+  max_iter=2000,
+  random_state=SEED,
+)
+svc.fit(X_train_val_combined, y_train_val)
+y_combined = svc.predict(X_test_combined)
+y_combined_score = svc.decision_function(X_test_combined)
+print(f"\nAccuracy: {accuracy_score(y_test, y_combined)}")
+print(f"Balanced accuracy: {balanced_accuracy_score(y_test, y_combined)}")
+print(f"ROC_AUC Score: {roc_auc_score(y_test, y_combined_score)}")
+print(f"\nClassification report:\n{classification_report(y_test, y_combined, zero_division=0)}")
+print(f"Confusion Matrix:\n{confusion_matrix(y_test, y_combined)}")
+# Accuracy: 0.7773769646998197
+# Balanced accuracy: 0.6908185943953147
+# ROC_AUC Score: 0.8701536505121683
+# 
+# Classification report:
+#               precision    recall  f1-score   support
+# 
+#            0       0.75      0.98      0.85      2521
+#            1       0.92      0.40      0.56      1360
+# 
+#     accuracy                           0.78      3881
+#    macro avg       0.83      0.69      0.70      3881
+# weighted avg       0.81      0.78      0.75      3881
+# 
+# Confusion Matrix:
+# [[2471   50]
+#  [ 814  546]]
+# 
+# why??? 😭😭😭
+## }}}
+## {{{ investigating 🧐
+print("Source vocabulary:", len(best_model.named_steps["tfidf"].vocabulary_))
+print("AST vocabulary:", len(vectorizer.vocabulary_))
+
+print("Train + validation:", len(train_val))
+print("Test:", len(test))
+
+print("Train + validation labels:")
+print(train_val["is_vulnerable"].value_counts(normalize=True))
+
+print("Test labels:")
+print(test["is_vulnerable"].value_counts(normalize=True))
+# Source vocabulary: 455333
+# AST vocabulary: 5585
+# Train + validation: 13811
+# Test: 3881
+# Train + validation labels:
+# is_vulnerable
+# 0    0.532112
+# 1    0.467888
+# Name: proportion, dtype: float64
+# Test labels:
+# is_vulnerable
+# 0    0.649575
+# 1    0.350425
+# Name: proportion, dtype: float64
 ## }}}
 ## }}}
