@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="author" content="reddykartik" />
+    <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+    <meta name="description" content="Python vulnerability detection" />
+    <title>nako</title>
+    <link rel="stylesheet" href="style.css" />
+    <script src="script.js" defer></script>
+  </head>
+  <body>
+    <div class="container">
+      <div class="heading">
+        <h4 class="title">nako</h4>
+        <div class="subheading">
+          <h3>Check your Python code.</h3>
+          <p>Submit Python source code to receive a machine-learning vulnerability prediction.</p>
+        </div>
+      </div>
+      <form id="checker-form">
+        <div class="editor">
+          <div class="head">
+            <label for="source-code">
+              <h3>Python source code</h3>
+            </label>
+            <p>Paste your code below</p>
+          </div>
+          <textarea 
+            id="source-code"
+            name="source_code" rows="10" cols="60" 
+            spellcheck="false" required
+            style="font-family: monospace;"></textarea>
+        </div>
+        <button type="submit">check vulnerability</button>
+      </form>
+      <p id="result" role="status" aria-live="polite" hidden></p>
+    </div>
+  </body>
+</html>

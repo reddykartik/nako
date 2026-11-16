@@ -8,7 +8,6 @@ import joblib
 from pathlib import Path
 import pandas as pd
 from sklearn.pipeline import Pipeline, FeatureUnion
-from sklearn.base import BaseEstimator, TransformerMixin
 from sklearn.svm import LinearSVC
 from sklearn.metrics import (
   accuracy_score,
@@ -19,6 +18,7 @@ from sklearn.metrics import (
 )
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.model_selection import GroupShuffleSplit
+from nako.features import ASTTokenTransformer
 ##
 
 ## constants
@@ -26,29 +26,6 @@ SEED = 3
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 DATA_PATH = PROJECT_ROOT / "data" / "processed" / "dataset.csv"
 MODEL_PATH = PROJECT_ROOT / "models" / "vulnerability_model.joblib"
-##
-
-## ast tokenizer
-class ASTTokenExtractor(ast.NodeVisitor):
-  def __init__(self):
-    self.tokens = []
-
-  def generic_visit(self, node):
-    self.tokens.append(type(node).__name__)
-    super().generic_visit(node)
-
-def extract_features(source):
-  tree = ast.parse(source)
-  extractor = ASTTokenExtractor()
-  extractor.visit(tree)
-  return " ".join(extractor.tokens)
-
-class ASTTokenTransformer(BaseEstimator, TransformerMixin):
-  def fit(self, X, y=None):
-    return self
-
-  def transform(self, X):
-    return [extract_features(source) for source in X]
 ##
 
 def create_pipeline():

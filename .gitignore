@@ -219,10 +219,27 @@ __marimo__/
 # Streamlit
 .streamlit/secrets.toml
 
-# Dataset files
-data/raw/*.csv
-data/raw/*.xlsx
-data/processed/*.csv
+# # Dataset files
+# data/raw/*.csv
+# data/raw/*.xlsx
+# data/processed/*.csv
+# 
+# # Trained models
+# models/*.joblib
 
-# Trained models
-models/*.joblib
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+
+# Nix build outputs
+result
+result-*
+.direnv/
+
+# Runtime files
+.nginx/
+*.pid
+
+# Editors
+*.swp

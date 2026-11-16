@@ -1,0 +1,75 @@
+*,
+::after,
+::before,
+::backdrop,
+::file-selector-button {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+  border: 0 solid;
+}
+
+body {
+  font-family: sans-serif;
+  background-color: black;
+  color: #fefefe;
+}
+
+textarea {
+  resize: none;
+  overflow: auto;
+  white-space: nowrap;
+  background: transparent;
+  border: 2px solid #efefef;
+  outline: none;
+  border-radius: 5px;
+  color: #eeeeee;
+  width: 100%;
+  height: 150px;
+}
+
+.container {
+  width: min(100% - 48px, 68ch);
+  margin-inline: auto;
+  overflow-wrap: break-word;
+  padding: 10px 0;
+}
+
+.title {
+  margin-bottom: 20px;
+}
+
+.subheading {
+  padding: 1ch 0;
+  display: grid;
+  gap: 5px; 
+  margin-bottom: 1.5ch;
+}
+
+.subheading p {
+  color: #eeeeee;
+}
+
+.editor {
+  display: grid;
+  gap: 10px;
+}
+
+.editor .head {
+  display: grid;
+  align-items: center;
+  justify-content: space-between;
+  color: #eeeeee;
+  font-size: 1.5ch;
+}
+
+button {
+  font-size: 2ch;
+  text-transform: capitalize;
+  padding: 1ch;
+  border: 1px solid #eeeeee;
+  border-radius: 0.3ch;
+  margin: 4ch 0;
+  width: 100%;
+  outline: none;
+}
